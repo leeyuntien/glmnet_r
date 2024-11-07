@@ -1,0 +1,60 @@
+# Multiple response glmnet with sparse inputs
+
+
+```{r}
+#install.packages("reticulate")
+#install.packages("glmnet")
+#library(reticulate)
+#library(glmnet)
+#py_install("scipy")
+#scipy_sparse = import("scipy.sparse")
+```
+
+## R interface
+
+```
+x <- scipy_sparse$load_npz("x.npz")
+y <- scipy_sparse$load_npz("y.npz")
+Sys.time()
+model.fit <- glmnet(x, y, family = "mgaussian", alpha = 0.5, lambda = c(0.5))
+Sys.time()
+```
+
+## C++ core routines referenced by R
+
+Originally taken from `glmnet/src/glmnetpp/test/testutil/translation/multelnet2.hpp`.
+
+```
+for (int k = 0; k < ni; ++k) {
+    if (ix(k) == 0) continue;
+    gj = y.transpose() * x.col(k);
+    gk = gj + xv(k) * a.col(k);
+    auto gkn = gk.norm();
+    auto ak = a.col(k);
+    auto u = 1.0 - ab*vp(k)/gkn;
+    del = ak;
+    if (u <= 0.0) { ak.setZero(); }
+    else {
+        ak = gk*(u/(xv(k)+dem*vp(k)));
+        Eigen::Map<const Eigen::MatrixXd> cl_slice(
+                cl.data() + k * 2 * nr, 2, nr);
+        chkbnds(gk,gkn,xv(k),cl_slice,
+                dem*vp(k),ab*vp(k),ak,isc);
+    }
+    del = ak - del;
+    if (del.array().abs().maxCoeff() <= 0.0) continue;
+    if (mm(k) == 0) {
+        ++nin;
+        if (nin > nx) throw util::max_active_reached_error();
+        mm(k) = nin;
+        ia(nin-1) = k+1;
+    }
+    rsq -= (del.array() * (2.0 * gj - xv(k) * del).array()).sum();
+    for (int j = 0; j < nr; ++j) { y.col(j) -= del(j) * x.col(k); }
+    dlx = std::max(dlx, xv(k) * del.array().square().maxCoeff());
+}
+```
+
+## Julia
+
+Refer to `multspelnet.jl` for more details.
